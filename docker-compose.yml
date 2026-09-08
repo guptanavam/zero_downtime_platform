@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  # --- 1. STATEFUL DATABASE SERVICE ---
+  db:
+    image: postgres:15-alpine
+    container_name: zero_downtime_db
+    environment:
+      POSTGRES_DB: app_db
+      POSTGRES_USER: postgres_user
+      POSTGRES_PASSWORD: postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres_user -d app_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # --- 2. STATELESS WEB API SERVICE ---
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zero_downtime_web
+    ports:
+      - "5000:5000"
+    environment:
+      - ENVIRONMENT=local-compose
+      - PORT=5000
+      - APP_VERSION=1.0.0
+      - DATABASE_URL=postgresql://postgres_user:postgres_password@db:5432/app_db
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+# --- 3. PERSISTENT DOCKER VOLUME ---
+volumes:
+  postgres_data:
