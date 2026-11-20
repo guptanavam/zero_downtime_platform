@@ -2,8 +2,10 @@ import os
 import json
 import logging
 import sys
+import time
 import psycopg2
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, Response
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 app = Flask(__name__)
 
@@ -24,6 +26,38 @@ logger = logging.getLogger("zero_downtime_app")
 logger.setLevel(logging.INFO)
 logger.addHandler(handler)
 
+# --- PROMETHEUS RED METRICS ---
+REQUEST_COUNT = Counter(
+    "http_requests_total",
+    "Total HTTP requests received",
+    ["method", "endpoint", "status"]
+)
+
+REQUEST_LATENCY = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request duration in seconds",
+    ["endpoint"]
+)
+
+@app.before_request
+def start_timer():
+    request.start_time = time.time()
+
+@app.after_request
+def record_metrics(response):
+    if hasattr(request, "start_time"):
+        duration = time.time() - request.start_time
+        endpoint = request.endpoint or "unknown"
+        # Record Duration (Histogram)
+        REQUEST_LATENCY.labels(endpoint=endpoint).observe(duration)
+        # Record Rate & Errors (Counter)
+        REQUEST_COUNT.labels(
+            method=request.method,
+            endpoint=endpoint,
+            status=response.status_code
+        ).inc()
+    return response
+
 # --- CONFIGURATION ---
 PORT = int(os.environ.get("PORT", 5000))
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "development")
@@ -40,6 +74,7 @@ def check_db_connection():
     except Exception as e:
         return False, str(e)
 
+# --- ROUTES ---
 @app.route("/")
 def home():
     logger.info("Home endpoint requested")
@@ -67,6 +102,12 @@ def version():
         "version": APP_VERSION,
         "environment": ENVIRONMENT
     }), 200
+
+# --- PROMETHEUS SCRAPE ENDPOINT ---
+@app.route("/metrics")
+def metrics():
+    """Endpoint scraped by Prometheus"""
+    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT)

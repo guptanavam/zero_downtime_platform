@@ -49,5 +49,15 @@ services:
       - web-blue
       - web-green
 
+    
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - nginx
+
 volumes:
   postgres_data:

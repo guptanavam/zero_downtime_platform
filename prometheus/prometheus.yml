@@ -1,0 +1,12 @@
+# Global configuration
+global:
+  scrape_interval: 5s     # Scrape metrics every 5 seconds (fast feedback for testing)
+  evaluation_interval: 5s # Evaluate alert rules every 5 seconds
+
+# List of targets to scrape
+scrape_configs:
+  - job_name: 'zero_downtime_platform'
+    metrics_path: '/metrics'
+    static_configs:
+      # We scrape through Nginx on port 80 so Prometheus always monitors the live active environment!
+      - targets: ['nginx:80']
